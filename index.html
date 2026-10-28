@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>我的中国旅行地图</title>
+<style>
+  :root {
+    --bg:#f5f6f8; --panel:#ffffff; --input:#ffffff; --text:#333333; --sub:#999999;
+    --line:#eeeeee; --chip:#eef1f6; --ptbg:#f7f8fa;
+    --mapArea:#eaf1fb; --mapBorder:#9db8dd; --mapEm:#d6e6ff; --shadow:rgba(0,0,0,.12);
+  }
+  [data-theme="dark"] {
+    --bg:#12141a; --panel:#1c1f27; --input:#262a34; --text:#e6e8ee; --sub:#8a8f9c;
+    --line:#2a2e38; --chip:#2a2e38; --ptbg:#232733;
+    --mapArea:#1e2a3d; --mapBorder:#3a4a63; --mapEm:#2a3c5a; --shadow:rgba(0,0,0,.45);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); }
+  #app { display:flex; flex-direction:column; height:100vh; height:100dvh; }
+  header { display:flex; align-items:center; gap:8px; padding:10px 14px; background:var(--panel); box-shadow:0 1px 4px var(--shadow); z-index:20; flex-wrap:wrap; }
+  header h1 { font-size:16px; flex:1; white-space:nowrap; }
+  .btn { border:none; border-radius:8px; padding:7px 12px; font-size:13px; cursor:pointer; background:#4a7dff; color:#fff; }
+  .btn.ghost { background:var(--chip); color:var(--text); }
+  .btn.warn { background:#ff6b6b; }
+  .btn.green { background:#07c160; }
+  .btn:active { opacity:.8; }
+  body.bar-hidden header, body.bar-hidden #tagsBar { display:none; }
+  #tagsBar { display:flex; gap:6px; overflow-x:auto; padding:8px 12px; background:var(--panel); z-index:19; }
+  .chip { flex:none; padding:4px 12px; border-radius:14px; font-size:12px; background:var(--chip); color:var(--text); cursor:pointer; border:1px solid transparent; }
+  .chip.on { background:#4a7dff; color:#fff; }
+  #main { flex:1; position:relative; overflow:hidden; }
+  #map { position:absolute; inset:0; }
+  #loadMsg { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:var(--sub); background:var(--bg); font-size:14px; z-index:5; text-align:center; padding:20px; }
+  .spin { width:32px; height:32px; border:3px solid var(--chip); border-top-color:#4a7dff; border-radius:50%; animation:sp 1s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+  .mapFloat { position:absolute; z-index:14; background:var(--panel); color:var(--text); box-shadow:0 2px 10px var(--shadow); border-radius:22px; padding:8px 16px; font-size:13px; cursor:pointer; display:flex; gap:6px; align-items:center; user-select:none; }
+  .mapFloat:active { opacity:.8; }
+  #mapSearchBtn { top:100px; left:12px; }
+  #fitBtn { top:146px; left:12px; }
+  #backBtn { top:100px; left:50%; transform:translateX(-50%); display:none; }
+  #showBarBtn { top:10px; right:12px; display:none; z-index:21; }
+  #panel { position:absolute; left:0; right:0; bottom:0; height:44%; background:var(--panel); color:var(--text); border-radius:16px 16px 0 0; box-shadow:0 -2px 12px var(--shadow); z-index:15; display:flex; flex-direction:column; transition:all .25s; }
+  #panel.min { transform:translateY(calc(100% - 36px)); }
+  #panel.max { left:14px !important; right:14px !important; width:auto !important; top:100px !important; bottom:14px !important; height:auto !important; border-radius:14px; }
+  #panelHandle { height:36px; display:flex; align-items:center; color:var(--sub); font-size:13px; flex:none; padding:0 6px; }
+  #panelHandle .ptitle { flex:1; text-align:center; cursor:pointer; }
+  .hbtn { border:none; background:none; font-size:15px; cursor:pointer; padding:4px 8px; color:var(--sub); }
+  #panelBody { flex:1; overflow-y:auto; padding:0 14px 14px; }
+  .tripGroup { margin-bottom:14px; }
+  .tripHead { display:flex; align-items:center; gap:8px; font-weight:600; font-size:14px; margin:8px 0; }
+  .dot { width:10px; height:10px; border-radius:50%; flex:none; }
+  .tripHead small { color:var(--sub); font-weight:400; flex:1; }
+  .pt { display:flex; align-items:flex-start; gap:8px; padding:8px 10px; border-radius:10px; background:var(--ptbg); margin-bottom:6px; }
+  .pt .info { flex:1; }
+  .pt .name { font-size:14px; font-weight:500; }
+  .pt .meta { font-size:12px; color:var(--sub); margin-top:2px; }
+  .pt .tags { margin-top:4px; display:flex; gap:4px; flex-wrap:wrap; }
+  .miniTag { font-size:11px; padding:1px 8px; border-radius:10px; }
+  .del { border:none; background:none; color:var(--sub); font-size:16px; cursor:pointer; padding:2px 6px; }
+  .mask { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:100; display:none; align-items:center; justify-content:center; padding:20px; }
+  .mask.show { display:flex; }
+  .modal { background:var(--panel); color:var(--text); border-radius:14px; width:100%; max-width:380px; max-height:85vh; overflow-y:auto; padding:18px; }
+  .modal h3 { font-size:16px; margin-bottom:14px; }
+  .field { margin-bottom:12px; }
+  .field label { display:block; font-size:13px; color:var(--sub); margin-bottom:5px; }
+  .field input, .field select, .field textarea { width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px; font-size:14px; background:var(--input); color:var(--text); }
+  .row { display:flex; gap:10px; }
+  .row .field { flex:1; }
+  .mBtns { display:flex; gap:10px; margin-top:6px; }
+  .mBtns .btn { flex:1; }
+  .hint { font-size:12px; color:var(--sub); margin-bottom:10px; line-height:1.6; }
+  #toast { position:fixed; left:50%; bottom:60px; transform:translateX(-50%); background:rgba(0,0,0,.75); color:#fff; padding:8px 18px; border-radius:20px; font-size:13px; z-index:200; display:none; max-width:80vw; text-align:center; }
+  #addTip { position:absolute; top:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.7); color:#fff; font-size:13px; padding:6px 16px; border-radius:16px; z-index:14; display:none; white-space:nowrap; }
+  #shareBanner { position:absolute; top:10px; left:50%; transform:translateX(-50%); background:#07c160; color:#fff; font-size:13px; padding:7px 16px; border-radius:18px; z-index:14; display:none; gap:8px; align-items:center; white-space:nowrap; box-shadow:0 2px 8px var(--shadow); }
+  #searchBox { width:100%; padding:10px 12px; border:1.5px solid #4a7dff; border-radius:10px; font-size:15px; outline:none; background:var(--input); color:var(--text); }
+  #searchResults { margin-top:10px; max-height:45vh; overflow-y:auto; }
+  .res { padding:10px 8px; border-bottom:1px solid var(--line); cursor:pointer; display:flex; gap:8px; align-items:flex-start; }
+  .res:active { background:#4a7dff22; }
+  .res .pin { flex:none; }
+  .res .rn { font-size:14px; font-weight:500; }
+  .res .ra { font-size:12px; color:var(--sub); margin-top:2px; }
+  .resStatus { text-align:center; color:var(--sub); font-size:13px; padding:16px 0; }
+  #shareLinkBox { width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px; font-size:12px; word-break:break-all; resize:none; height:90px; background:var(--input); color:var(--text); }
+  /* 标签集管理 */
+  .tagRow { display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:10px; background:var(--ptbg); margin-bottom:6px; }
+  .tagRow input[type=color] { width:30px; height:30px; border:none; background:none; padding:0; cursor:pointer; flex:none; }
+  .tagRow input[type=text] { flex:1; padding:7px 9px; border:1px solid var(--line); border-radius:8px; font-size:13px; background:var(--input); color:var(--text); }
+  .tagRow .cnt { font-size:11px; color:var(--sub); flex:none; }
+  @media (min-width:768px){
+    #app { flex-direction:row; }
+    header { position:absolute; top:0; left:0; right:0; width:auto; background:color-mix(in srgb, var(--panel) 92%, transparent); }
+    #tagsBar { position:absolute; top:52px; left:0; right:0; background:color-mix(in srgb, var(--panel) 92%, transparent); }
+    #main { position:relative; }
+    #panel { left:auto; top:100px; bottom:14px; right:14px; width:330px; height:auto; border-radius:14px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>🗺️ 我的中国旅行地图</h1>
+    <button class="btn" id="btnTrip" onclick="openTripModal()">+旅程</button>
+    <button class="btn" id="btnPoint" onclick="openSearchModal()">+地点</button>
+    <button class="btn ghost" id="btnTags" onclick="openTagModal()">🏷 标签集</button>
+    <button class="btn ghost" id="btnCsv" onclick="document.getElementById('csvFile').click()">导入CSV</button>
+    <button class="btn ghost" id="btnExport" onclick="exportCSV()">导出</button>
+    <button class="btn ghost" id="btnKey" onclick="openKeyModal()">🔑 Key</button>
+    <button class="btn ghost" id="btnTheme" onclick="cycleTheme()" title="切换主题">🌗</button>
+    <button class="btn ghost" id="btnHideBar" onclick="toggleBar()" title="隐藏工具栏">🙈</button>
+    <input type="file" id="csvFile" accept=".csv" style="display:none" onchange="importCSV(this)">
+  </header>
+  <div id="tagsBar"></div>
+  <div id="main">
+    <div id="map"></div>
+    <div id="loadMsg"><div class="spin"></div><div id="loadText">正在加载地图资源…</div></div>
+    <div id="addTip">点击地图任意位置，添加地点 ✕</div>
+    <div id="shareBanner">🎁 朋友分享的旅程 <button class="btn" style="padding:4px 12px;font-size:12px" onclick="saveSharedToMine()">保存到我的地图</button></div>
+    <div id="mapSearchBtn" class="mapFloat" onclick="openSearchModal()">🔍 地点检索</div>
+    <div id="fitBtn" class="mapFloat" onclick="fitView()">⛶ 适应比例</div>
+    <div id="backBtn" class="mapFloat" onclick="backToChina()">← 返回全国</div>
+    <div id="showBarBtn" class="mapFloat" onclick="toggleBar()">▾ 显示工具栏</div>
+    <div id="panel">
+      <div id="panelHandle">
+        <span class="ptitle" onclick="toggleMin()">— 旅程与地点列表 —</span>
+        <button class="hbtn" title="最大化/还原" onclick="toggleMax(event)">⛶</button>
+      </div>
+      <div id="panelBody"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 标签集管理弹窗 -->
+<div class="mask" id="tagMask">
+  <div class="modal">
+    <h3>🏷 标签集管理</h3>
+    <div class="hint">改名会同步到所有使用该标签的地点；删除可选择同时从地点中移除。新标签在添加/编辑地点时直接使用即可。</div>
+    <div id="tagDefList"></div>
+    <div class="row" style="margin-top:10px">
+      <div class="field" style="flex:1"><input id="newTagName" placeholder="新标签名称，如：露营"></div>
+      <div class="field" style="flex:none"><input id="newTagColor" type="color" value="#4a7dff" style="width:44px;height:38px;padding:2px"></div>
+    </div>
+    <div class="mBtns">
+      <button class="btn" onclick="addTagDef()">＋ 添加标签</button>
+    </div>
+    <div class="mBtns"><button class="btn ghost" onclick="closeMask('tagMask')">关闭</button></div>
+  </div>
+</div>
+
+<!-- 地点搜索弹窗 -->
+<div class="mask" id="searchMask">
+  <div class="modal">
+    <h3>🔍 搜索地点（高德数据）</h3>
+    <input id="searchBox" placeholder="输入国内任意地名，如：丽江古城" autocomplete="off">
+    <div id="searchResults"><div class="resStatus">输入关键词开始搜索</div></div>
+    <div class="hint" style="margin-top:10px">搜索异常？点右上角「🔑 Key」填写自己的高德 Key</div>
+    <div class="mBtns">
+      <button class="btn ghost" onclick="closeMask('searchMask')">取消</button>
+      <button class="btn" onclick="pickOnMap()">📍 在地图上点选</button>
+    </div>
+  </div>
+</div>
+
+<!-- 高德 Key 管理弹窗 -->
+<div class="mask" id="keyMask">
+  <div class="modal">
+    <h3>🔑 高德 API Key 管理</h3>
+    <div class="hint">
+      当前状态：<b id="keyStatus"></b><br>
+      网页启动时会自动读取<b>同目录下的 apikey.txt</b>作为默认 Key（把 Key 粘贴到该文件、与网页放同一文件夹即可）；不填 Key 也能用（走免Key通道）。<br>
+      <b>免费申请步骤：</b><br>
+      1. 打开 <b>lbs.amap.com</b> 注册登录<br>
+      2. 「应用管理」→ 创建应用（类型：Web服务）<br>
+      3. 添加 Key，复制后粘贴到下方
+    </div>
+    <div class="field"><label>高德 Web服务 Key</label><input id="keyInput" placeholder="粘贴 Key，留空表示使用免Key模式"></div>
+    <div class="hint" id="keyTestResult" style="min-height:18px"></div>
+    <div class="mBtns">
+      <button class="btn ghost" onclick="testKey()">测试</button>
+      <button class="btn" onclick="saveKey()">保存</button>
+      <button class="btn warn" onclick="clearKey()">清除</button>
+    </div>
+    <div class="mBtns"><button class="btn ghost" onclick="closeMask('keyMask')">关闭</button></div>
+  </div>
+</div>
+
+<!-- 分享弹窗 -->
+<div class="mask" id="shareMask">
+  <div class="modal">
+    <h3>↗ 分享旅程到微信</h3>
+    <div class="hint">
+      链接已包含该旅程全部地点数据，对方打开后进入<b>只读分享视图</b>，可一键保存到自己的地图。<br>
+      <b>注意：</b>需先把本网页部署到可公网访问的地址（如 GitHub/Gitee Pages、Vercel），本地 file:// 链接无法发送给他人。
+    </div>
+    <textarea id="shareLinkBox" readonly onclick="this.select()"></textarea>
+    <div class="mBtns">
+      <button class="btn ghost" onclick="closeMask('shareMask')">关闭</button>
+      <button class="btn green" onclick="copyShareLink()">📋 复制链接</button>
+    </div>
+  </div>
+</div>
+
+<!-- 地点表单弹窗 -->
+<div class="mask" id="pointMask">
+  <div class="modal">
+    <h3 id="pointModalTitle">添加地点</h3>
+    <div class="hint" id="coordHint"></div>
+    <div class="field"><label>地点名称 *</label><input id="pName" placeholder="如：西湖断桥"></div>
+    <div class="row">
+      <div class="field"><label>所属旅程</label><select id="pTrip"></select></div>
+      <div class="field"><label>日期</label><input id="pDate" type="date"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>经度 lng</label><input id="pLng" type="number" step="0.000001"></div>
+      <div class="field"><label>纬度 lat</label><input id="pLat" type="number" step="0.000001"></div>
+    </div>
+    <div class="field"><label>标签（多个用逗号分隔）</label><input id="pTags" placeholder="美食,拍照"><div class="hint" id="tagSuggestions" style="margin:5px 0 0"></div></div>
+    <div class="field"><label>备注</label><textarea id="pNote" rows="2" placeholder="想说的话…"></textarea></div>
+    <div class="mBtns">
+      <button class="btn ghost" onclick="closeMask('pointMask')">取消</button>
+      <button class="btn" onclick="savePoint()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="mask" id="tripMask">
+  <div class="modal">
+    <h3>添加旅程</h3>
+    <div class="field"><label>旅程名称 *</label><input id="tName" placeholder="如：2024 川西自驾"></div>
+    <div class="field"><label>颜色</label><input id="tColor" type="color" value="#4a7dff"></div>
+    <div class="mBtns">
+      <button class="btn ghost" onclick="closeMask('tripMask')">取消</button>
+      <button class="btn" onclick="saveTrip()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="mask" id="csvMask">
+  <div class="modal">
+    <h3>CSV 导入格式</h3>
+    <div class="hint">
+      首行必须为表头，支持列：<br>
+      <b>trip,name,lng,lat,tags,date,note</b><br>
+      示例：<br>
+      2024川西自驾,折多山,101.50,30.05,雪山;自驾,2024-07-12,海拔4298米<br>
+      （多个标签用 <b>;</b> 分隔；旅程不存在时自动创建）
+    </div>
+    <div class="mBtns"><button class="btn" onclick="closeMask('csvMask')">知道了</button></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ================= 主题：亮色 / 暗色 / 跟随系统 ================= */
+const mqDark = window.matchMedia('(prefers-color-scheme: dark)');
+function themePref(){ return localStorage.getItem('theme') || 'system'; }
+function effectiveTheme(){ const p = themePref(); return p === 'system' ? (mqDark.matches ? 'dark' : 'light') : p; }
+function applyTheme(){
+  const t = effectiveTheme();
+  document.documentElement.setAttribute('data-theme', t);
+  document.getElementById('btnTheme').textContent = themePref() === 'system' ? (t === 'dark' ? '🖥️🌙' : '🖥️☀️') : (t === 'dark' ? '🌙 暗色' : '☀️ 亮色');
+  if(chart) render();
+}
+function cycleTheme(){
+  const order = ['system', 'light', 'dark'];
+  const cur = themePref();
+  const next = order[(order.indexOf(cur) + 1) % order.length];
+  localStorage.setItem('theme', next);
+  applyTheme();
+  toast(next === 'system' ? '已切换：跟随系统' : next === 'dark' ? '已切换：暗色' : '已切换：亮色');
+}
+mqDark.addEventListener('change', () => { if(themePref() === 'system') applyTheme(); });
+
+/* ================= 导航栏隐藏 / 显示 ================= */
+function toggleBar(){
+  const hidden = document.body.classList.toggle('bar-hidden');
+  document.getElementById('showBarBtn').style.display = hidden ? 'flex' : 'none';
+}
+
+/* ================= 一键适应比例 ================= */
+function fitView(){
+  if(!chart) return;
+  const pts = state.points;
+  if(!pts.length){ resetView(); toast('暂无地点，已恢复默认视图'); return; }
+  if(currentMap !== 'china'){ currentMap = 'china'; document.getElementById('backBtn').style.display = 'none'; }
+  const lons = pts.map(p=>p.lng), lats = pts.map(p=>p.lat);
+  const minX = Math.min(...lons), maxX = Math.max(...lons);
+  const minY = Math.min(...lats), maxY = Math.max(...lats);
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  const spanX = Math.max(maxX - minX, 2), spanY = Math.max(maxY - minY, 2);
+  const zoom = Math.min(1 / Math.max(spanX / 62, spanY / 38) / 1.15, 10);
+  chart.setOption({ geo:{ map:'china', center:[cx, cy], zoom: Math.max(zoom, 0.6) } });
+  toast('已适配全部 ' + pts.length + ' 个地点');
+}
+function resetView(){
+  if(currentMap !== 'china'){ currentMap = 'china'; document.getElementById('backBtn').style.display = 'none'; }
+  chart.setOption({ geo:{ map:'china', center:null, zoom:1.15 } });
+}
+
+/* ================= 分享数据编解码（gzip+base64） ================= */
+function u8ToB64(bytes){
+  let bin=''; const CH=0x8000;
+  for(let i=0;i<bytes.length;i+=CH){ bin += String.fromCharCode.apply(null, bytes.subarray(i,i+CH)); }
+  return btoa(bin);
+}
+function b64ToU8(b64){
+  const bin = atob(b64); const u8 = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+  return u8;
+}
+async function encodeShare(obj){
+  const str = JSON.stringify(obj);
+  if(window.CompressionStream){
+    const buf = await new Response(new Blob([str]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+    return 'g1.' + u8ToB64(new Uint8Array(buf));
+  }
+  return 'g0.' + u8ToB64(new TextEncoder().encode(str));
+}
+async function decodeShare(code){
+  const ver = code.slice(0,3), b64 = code.slice(3);
+  const u8 = b64ToU8(b64);
+  if(ver === 'g1.' && window.DecompressionStream){
+    const buf = await new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+    return JSON.parse(new TextDecoder().decode(buf));
+  }
+  return JSON.parse(new TextDecoder().decode(u8));
+}
+
+/* ================= 地图资源加载（多源降级） ================= */
+function loadText(msg){ document.getElementById('loadText').textContent = msg; }
+function loadScript(urls, i){
+  i = i || 0;
+  return new Promise((resolve, reject) => {
+    if(i >= urls.length) return reject(new Error('all cdn failed'));
+    loadText('正在加载核心库 (' + (i+1) + '/' + urls.length + ')…');
+    const s = document.createElement('script');
+    s.src = urls[i];
+    s.onload = () => resolve(urls[i]);
+    s.onerror = () => loadScript(urls, i+1).then(resolve, reject);
+    document.head.appendChild(s);
+  });
+}
+const ECHARTS_CDNS = [
+  'https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js',
+  'https://unpkg.com/echarts@5.5.0/dist/echarts.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js',
+  'https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js',
+  'https://lib.baomitu.com/echarts/5.5.0/echarts.min.js'
+];
+const GEOJSON_URLS = [
+  'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json',
+  'https://geo.datav.aliyun.com/areas_v2/bound/100000_full.json',
+  'https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/json/china.json',
+  'https://unpkg.com/echarts@4.9.0/map/json/china.json'
+];
+
+let chart = null, shareMode = false;
+let currentMap = 'china';
+
+loadScript(ECHARTS_CDNS)
+  .then(() => { loadText('核心库已加载，正在下载中国地图数据…'); return loadGeoJSON(0); })
+  .then(geo => {
+    echarts.registerMap('china', geo);
+    chart = echarts.init(document.getElementById('map'));
+    document.getElementById('loadMsg').style.display = 'none';
+    initMap();
+  })
+  .catch(() => {
+    loadText('⚠️ 地图资源加载失败。请检查网络连接后刷新页面。');
+    toast('地图加载失败，请检查网络');
+  });
+
+function loadGeoJSON(i){
+  return new Promise((resolve, reject) => {
+    if(i >= GEOJSON_URLS.length) return reject(new Error('geo failed'));
+    fetch(GEOJSON_URLS[i]).then(r => { if(!r.ok) throw new Error(r.status); return r.json(); })
+      .then(resolve).catch(() => loadGeoJSON(i+1).then(resolve, reject));
+  });
+}
+
+/* ================= 省下钻：双击省份放大 ================= */
+let lastClick = { name:'', t:0 };
+function initMap(){
+  render();
+  chart.on('click', p => {
+    if(p.componentType === 'series' && p.data && p.data._id){
+      if(!shareMode) openPointModal(p.data._id);
+      return;
+    }
+    if(p.componentType === 'geo'){
+      if(addMode && p.value){
+        pendingCoord = p.value;
+        openPointModal(null, p.value);
+        return;
+      }
+      const now = Date.now();
+      if(p.name && p.name === lastClick.name && now - lastClick.t < 350){
+        lastClick = { name:'', t:0 };
+        if(!addMode) drillDown(p.name);
+      } else {
+        lastClick = { name: p.name, t: now };
+      }
+    }
+  });
+}
+
+async function drillDown(provinceName){
+  if(currentMap !== 'china') return;
+  let adcode = null;
+  try{
+    const m = echarts.getMap('china');
+    const feats = ((m.geoJSON || m.geoJson || {}).features) || [];
+    const f = feats.find(x => x.properties && x.properties.name === provinceName);
+    adcode = f && f.properties.adcode;
+  }catch(e){}
+  if(!adcode) return toast('未找到「' + provinceName + '」的区划数据');
+  toast('正在加载 ' + provinceName + ' …');
+  try{
+    const geo = await fetch(`https://geo.datav.aliyun.com/areas_v3/bound/${adcode}_full.json`).then(r => r.json());
+    const mapName = 'p' + adcode;
+    echarts.registerMap(mapName, geo);
+    currentMap = mapName;
+    chart.setOption({ geo:{ map: mapName, zoom: 1.05, center: null } });
+    document.getElementById('backBtn').style.display = 'flex';
+  }catch(e){
+    toast(provinceName + ' 数据加载失败，请检查网络');
+  }
+}
+function backToChina(){
+  currentMap = 'china';
+  chart.setOption({ geo:{ map:'china', zoom:1.15, center:null } });
+  document.getElementById('backBtn').style.display = 'none';
+}
+
+/* ================= 面板最小化 / 最大化 ================= */
+function toggleMin(){
+  const p = document.getElementById('panel');
+  p.classList.toggle('min');
+  p.classList.remove('max');
+}
+function toggleMax(e){
+  e.stopPropagation();
+  const p = document.getElementById('panel');
+  p.classList.toggle('max');
+  p.classList.remove('min');
+}
+
+/* ================= 标签集管理 ================= */
+function tagDef(name){ return (state.tagDefs || []).find(t => t.name === name); }
+function tagColor(name){ const d = tagDef(name); return d ? d.color : '#4a7dff'; }
+
+function openTagModal(){
+  renderTagDefs();
+  document.getElementById('newTagName').value = '';
+  document.getElementById('tagMask').classList.add('show');
+}
+function renderTagDefs(){
+  const box = document.getElementById('tagDefList');
+  const defs = state.tagDefs || [];
+  const all = allTags();
+  if(!defs.length){ box.innerHTML = '<div class="resStatus">暂无预定义标签<br>添加地点时输入的标签会自动出现在筛选栏</div>'; return; }
+  box.innerHTML = defs.map(t => {
+    const cnt = state.points.filter(p => (p.tags||[]).includes(t.name)).length;
+    return `<div class="tagRow">
+      <input type="color" value="${t.color}" onchange="editTagColor('${esc(t.name)}', this.value)">
+      <input type="text" value="${esc(t.name)}" onchange="renameTagDef('${esc(t.name)}', this.value)">
+      <span class="cnt">${cnt} 地点</span>
+      <button class="del" title="删除标签" onclick="delTagDef('${esc(t.name)}')">✕</button>
+    </div>`;
+  }).join('');
+}
+function addTagDef(){
+  const name = document.getElementById('newTagName').value.trim();
+  if(!name) return toast('请输入标签名称');
+  if(tagDef(name)) return toast('标签已存在');
+  state.tagDefs = state.tagDefs || [];
+  state.tagDefs.push({ name, color: document.getElementById('newTagColor').value });
+  save(); renderTagDefs(); render();
+  document.getElementById('newTagName').value = '';
+  toast('标签已添加');
+}
+function renameTagDef(oldName, newName){
+  newName = newName.trim();
+  if(!newName || newName === oldName) return renderTagDefs();
+  if(tagDef(newName)) { toast('名称已存在，未修改'); return renderTagDefs(); }
+  const d = tagDef(oldName);
+  if(d) d.name = newName;
+  state.points.forEach(p => { (p.tags||[]).forEach((t,i) => { if(t === oldName) p.tags[i] = newName; }); });
+  if(activeTags.has(oldName)){ activeTags.delete(oldName); activeTags.add(newName); }
+  save(); renderTagDefs(); render();
+  toast('已重命名并同步到所有地点');
+}
+function editTagColor(name, color){
+  const d = tagDef(name);
+  if(d){ d.color = color; save(); renderTagDefs(); render(); }
+}
+function delTagDef(name){
+  const cnt = state.points.filter(p => (p.tags||[]).includes(name)).length;
+  const alsoRemove = cnt > 0 ? confirm(`有 ${cnt} 个地点使用了「${name}」标签。\n确定 = 从地点中一并移除\n取消 = 仅删除标签定义`) : true;
+  state.tagDefs = (state.tagDefs || []).filter(t => t.name !== name);
+  if(alsoRemove) state.points.forEach(p => { p.tags = (p.tags||[]).filter(t => t !== name); });
+  activeTags.delete(name);
+  save(); renderTagDefs(); render();
+  toast('标签已删除');
+}
+
+/* ================= 高德 Key 管理 ================= */
+/* 默认 Key 来源：同目录 apikey.txt（部署到网站后生效）；
+   用户在「🔑 Key」弹窗手动保存的 Key 优先级更高 */
+let txtKey = '';
+async function loadDefaultKey(){
+  try{
+    const r = await fetch('apikey.txt', { cache:'no-store' });
+    if(r.ok){
+      const k = (await r.text()).trim();
+      if(k){ txtKey = k; console.log('[旅行地图] 已从 apikey.txt 加载默认 Key'); }
+    }
+  }catch(e){ /* file:// 环境无法读取，忽略 */ }
+}
+function getAmapKey(){ return localStorage.getItem('amap_key') || txtKey || ''; }
+function openKeyModal(){
+  document.getElementById('keyInput').value = getAmapKey();
+  document.getElementById('keyInput').placeholder = txtKey ? '已加载 apikey.txt 的 Key，可直接覆盖' : '粘贴 Key，留空表示使用免Key模式';
+  document.getElementById('keyTestResult').textContent = '';
+  updateKeyStatus();
+  document.getElementById('keyMask').classList.add('show');
+}
+function keySource(){
+  if(localStorage.getItem('amap_key')) return 'manual';
+  if(txtKey) return 'txt';
+  return 'none';
+}
+function updateKeyStatus(){
+  const src = keySource();
+  const label = src === 'manual' ? '已配置自有 Key ✓（手动保存）'
+              : src === 'txt' ? '已配置自有 Key ✓（来自 apikey.txt）'
+              : '免Key模式（未配置）';
+  document.getElementById('keyStatus').textContent = label;
+  document.getElementById('keyStatus').style.color = src === 'none' ? '#f60' : '#07c160';
+}
+function saveKey(){
+  const k = document.getElementById('keyInput').value.trim();
+  if(k) localStorage.setItem('amap_key', k); else localStorage.removeItem('amap_key');
+  updateKeyStatus(); toast(k ? 'Key 已保存' : '已切换为免Key模式');
+}
+function clearKey(){
+  localStorage.removeItem('amap_key');
+  document.getElementById('keyInput').value = '';
+  updateKeyStatus();
+  toast(txtKey ? '已清除手动 Key，回退到 apikey.txt' : 'Key 已清除，使用免Key模式');
+}
+async function testKey(){
+  const k = document.getElementById('keyInput').value.trim();
+  const box = document.getElementById('keyTestResult');
+  if(!k){ box.textContent = '请先输入 Key 再测试'; box.style.color='#f60'; return; }
+  box.textContent = '⏳ 正在测试…'; box.style.color='#888';
+  try{
+    const r = await fetch(`https://restapi.amap.com/v3/assistant/inputtips?keywords=故宫&city=北京&output=json&key=${k}`).then(r=>r.json());
+    if(r.status === '1'){ box.textContent = '✅ Key 有效！可正常搜索'; box.style.color='#07c160'; }
+    else { box.textContent = '❌ Key 无效：' + (r.info || '未知错误'); box.style.color='#f60'; }
+  }catch(e){ box.textContent = '❌ 网络请求失败，无法测试'; box.style.color='#f60'; }
+}
+
+/* ================= 高德地点搜索 ================= */
+async function amapSearch(kw){
+  const key = getAmapKey();
+  if(key){
+    try{
+      const r = await fetch(`https://restapi.amap.com/v3/assistant/inputtips?keywords=${encodeURIComponent(kw)}&city=全国&output=json&key=${key}`).then(r=>r.json());
+      if(r.status === '1' && r.tips && r.tips.length){
+        return r.tips.map(t => ({ name:t.name, addr:[t.district, t.address && t.address.length ? t.address : ''].filter(Boolean).join(' '), loc:t.location || '' }));
+      }
+    }catch(e){}
+  }
+  const r = await fetch(`https://www.amap.com/service/poiTipslite?city=全国&keywords=${encodeURIComponent(kw)}`).then(r=>r.json());
+  const tips = (r.data && r.data.tips) || [];
+  return tips.map(t => ({ name:t.name, addr:[t.district, t.address && t.address.length ? t.address : ''].filter(Boolean).join(' '), loc:t.location || '' }));
+}
+async function amapGeocode(name){
+  const key = getAmapKey();
+  if(key){
+    try{
+      const r = await fetch(`https://restapi.amap.com/v3/geocode/geo?address=${encodeURIComponent(name)}&output=json&key=${key}`).then(r=>r.json());
+      if(r.status === '1' && r.geocodes && r.geocodes.length) return r.geocodes[0].location;
+    }catch(e){}
+  }
+  const r = await fetch(`https://www.amap.com/service/poiInfo?query_type=TQUERY&pagesize=1&pagenum=1&cluster_state=5&need_utd=true&utd_sceneid=1000&div=PC1000&addr_poi_merge=true&is_classify=true&zoom=12&city=全国&keywords=${encodeURIComponent(name)}`).then(r=>r.json());
+  const d = r.data || {};
+  const pois = d.pois || d.poi_list || [];
+  const p = pois[0] || {};
+  if(p.location) return p.location;
+  if(typeof p.x === 'number' && typeof p.y === 'number') return p.x + ',' + p.y;
+  return '';
+}
+
+let searchTimer = null;
+function openSearchModal(){
+  if(shareMode) return;
+  if(!state.trips.length){ toast('请先添加一个旅程'); openTripModal(); return; }
+  closeMask('pointMask');
+  document.getElementById('searchMask').classList.add('show');
+  const box = document.getElementById('searchBox');
+  box.value = '';
+  document.getElementById('searchResults').innerHTML = '<div class="resStatus">输入关键词开始搜索</div>';
+  setTimeout(()=>box.focus(), 100);
+}
+document.addEventListener('input', e => {
+  if(e.target.id !== 'searchBox') return;
+  clearTimeout(searchTimer);
+  const kw = e.target.value.trim();
+  if(!kw) { document.getElementById('searchResults').innerHTML = '<div class="resStatus">输入关键词开始搜索</div>'; return; }
+  searchTimer = setTimeout(async () => {
+    const box = document.getElementById('searchResults');
+    box.innerHTML = '<div class="resStatus">🔍 搜索中…</div>';
+    try{
+      const res = await amapSearch(kw);
+      if(!res.length){ box.innerHTML = '<div class="resStatus">未找到相关地点，换个关键词试试</div>'; return; }
+      box.innerHTML = res.slice(0, 15).map((r,i) =>
+        `<div class="res" onclick="pickResult(${i})"><span class="pin">📍</span><div><div class="rn">${esc(r.name)}</div><div class="ra">${esc(r.addr || '')}</div></div></div>`
+      ).join('');
+      box._res = res;
+    }catch(err){
+      box.innerHTML = '<div class="resStatus" style="color:#f60">搜索服务暂时不可用<br>可点「在地图上点选」，或在右上角「🔑 Key」配置自己的 Key</div>';
+    }
+  }, 350);
+});
+async function pickResult(i){
+  const res = document.getElementById('searchResults')._res[i];
+  let loc = res.loc;
+  toast('正在获取坐标…');
+  if(!loc || !loc.includes(',')){
+    try{ loc = await amapGeocode(res.name); }catch(e){ loc=''; }
+  }
+  closeMask('searchMask');
+  if(loc && loc.includes(',')){
+    const [lng, lat] = loc.split(',').map(Number);
+    openPointModal(null, [lng, lat], res.name);
+  } else {
+    openPointModal(null, null, res.name);
+    toast('未获取到坐标，请手动填写经纬度');
+  }
+}
+function pickOnMap(){
+  closeMask('searchMask');
+  if(!addMode) toggleAddMode();
+}
+
+/* ================= 分享功能 ================= */
+async function openShare(tripId){
+  const trip = state.trips.find(t=>t.id===tripId);
+  if(!trip) return;
+  const pts = state.points.filter(p=>p.tripId===tripId);
+  if(!pts.length) return toast('该旅程还没有地点，无法分享');
+  toast('正在生成分享链接…');
+  try{
+    const payload = { v:1, trips:[{name:trip.name, color:trip.color}], points: pts.map(p=>({name:p.name, lng:p.lng, lat:p.lat, tags:p.tags, date:p.date, note:p.note})) };
+    const code = await encodeShare(payload);
+    const url = location.href.split('#')[0] + '#share=' + code;
+    document.getElementById('shareLinkBox').value = url;
+    document.getElementById('shareMask').classList.add('show');
+  }catch(e){ toast('生成失败：' + e.message); }
+}
+async function copyShareLink(){
+  const t = document.getElementById('shareLinkBox');
+  t.select();
+  try{ await navigator.clipboard.writeText(t.value); toast('已复制，去微信粘贴发送吧 📤'); }
+  catch(e){ document.execCommand('copy'); toast('已选中链接，请手动复制'); }
+}
+function saveSharedToMine(){
+  try{
+    const mine = JSON.parse(localStorage.getItem(LS_KEY) || '{"trips":[],"points":[]}');
+    const idMap = {};
+    state.trips.forEach(t => { const nid = 't' + Date.now() + Math.random().toString(36).slice(2,6); idMap[t.id] = nid; mine.trips.push({...t, id:nid}); });
+    state.points.forEach(p => mine.points.push({...p, id:'p' + Date.now() + Math.random().toString(36).slice(2,6), tripId:idMap[p.tripId] || p.tripId}));
+    localStorage.setItem(LS_KEY, JSON.stringify(mine));
+    toast('已保存到我的地图 ✓');
+    setTimeout(()=>{ location.hash=''; location.reload(); }, 600);
+  }catch(e){ toast('保存失败'); }
+}
+
+/* ================= 数据层 ================= */
+const LS_KEY = 'china_travel_map_v1';
+let state = { trips: [], points: [], tagDefs: [] };
+let activeTags = new Set(), addMode = false, pendingCoord = null, editingId = null;
+
+function load(){
+  try{
+    const s = JSON.parse(localStorage.getItem(LS_KEY));
+    if(s){ state = s; state.tagDefs = state.tagDefs || []; }
+  }catch(e){}
+}
+function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none',2200); }
+function closeMask(id){ document.getElementById(id).classList.remove('show'); }
+
+/* ================= 地图渲染 ================= */
+function allTags(){
+  const s = new Set();
+  (state.tagDefs||[]).forEach(t=>s.add(t.name));
+  state.points.forEach(p=>(p.tags||[]).forEach(t=>s.add(t)));
+  return [...s];
+}
+
+const MAP_STYLE = {
+  light:{ area:'#eaf1fb', border:'#9db8dd', em:'#d6e6ff' },
+  dark:{ area:'#1e2a3d', border:'#3a4a63', em:'#2a3c5a' }
+};
+
+function render(){
+  if(!chart) return;
+  const ms = MAP_STYLE[effectiveTheme()] || MAP_STYLE.light;
+  const pts = state.points.filter(p => activeTags.size===0 || (p.tags||[]).some(t=>activeTags.has(t)));
+  const series = state.trips.map(trip => ({
+    name: trip.name, type:'scatter', coordinateSystem:'geo',
+    symbolSize: 14,
+    itemStyle:{ color: trip.color, borderColor:'#fff', borderWidth:1.5, shadowBlur:6, shadowColor:'rgba(0,0,0,.3)' },
+    data: pts.filter(p=>p.tripId===trip.id).map(p=>({ name:p.name, value:[p.lng,p.lat], _id:p.id, note:p.note, tags:p.tags, date:p.date, tripId:p.tripId }))
+  }));
+  chart.setOption({
+    geo:{ map: currentMap, roam:true,
+      zoom: currentMap==='china' ? 1.15 : 1.05, scaleLimit:{min:.6,max:12},
+      label:{ show:false, color:'#666' },
+      itemStyle:{ areaColor: ms.area, borderColor: ms.border },
+      emphasis:{ itemStyle:{ areaColor: ms.em }, label:{ show:true, fontSize:11 } } },
+    tooltip:{ trigger:'item', formatter: p => {
+      if(p.componentType!=='series') return p.name + (currentMap==='china' ? '<br><span style="color:#999;font-size:11px">双击放大该省份</span>' : '');
+      const d = p.data;
+      return '<b>'+esc(d.name)+'</b><br>'+esc(tripName(d.tripId))+' '+(d.date||'')+'<br>'+(d.tags||[]).map(t=>'#'+esc(t)).join(' ')+(d.note?'<br>📝 '+esc(d.note):'');
+    }},
+    series
+  }, true);
+  renderTags(); renderPanel();
+}
+
+function renderTags(){
+  const bar = document.getElementById('tagsBar');
+  const tags = allTags();
+  bar.innerHTML = '<span style="font-size:12px;color:var(--sub);flex:none;align-self:center">标签筛选:</span>' +
+    tags.map(t => {
+      const c = tagColor(t);
+      const on = activeTags.has(t);
+      return `<span class="chip ${on?'on':''}" style="${on ? `background:${c};color:#fff` : `border-color:${c}55;color:${c}`}" onclick="toggleTag('${t.replace(/'/g,"\\'")}')">#${t}</span>`;
+    }).join('') +
+    (tags.length? `<span class="chip" onclick="activeTags.clear();render()" style="color:#f60">✕ 清除</span>`:'');
+}
+function toggleTag(t){ activeTags.has(t)?activeTags.delete(t):activeTags.add(t); render(); }
+
+function renderPanel(){
+  const body = document.getElementById('panelBody');
+  if(!state.trips.length){ body.innerHTML = '<div style="color:var(--sub);font-size:13px;text-align:center;padding:30px 0">还没有旅程<br>点击右上角「+旅程」开始吧</div>'; return; }
+  body.innerHTML = state.trips.map(trip=>{
+    const pts = state.points.filter(p=>p.tripId===trip.id);
+    return `<div class="tripGroup">
+      <div class="tripHead"><span class="dot" style="background:${trip.color}"></span>${esc(trip.name)}<small>${pts.length} 个地点</small>
+        ${shareMode?'':`<button class="del" title="分享到微信" onclick="openShare('${trip.id}')">↗</button>`}
+        ${shareMode?'':`<button class="del" title="删除旅程" onclick="delTrip('${trip.id}')">🗑</button>`}</div>
+      ${pts.map(p=>`<div class="pt"><div class="info">
+          <div class="name">${esc(p.name)} <span style="color:var(--sub);font-size:11px">${p.date||''}</span></div>
+          <div class="meta">${p.lng.toFixed(2)}, ${p.lat.toFixed(2)}${p.note?' · '+esc(p.note):''}</div>
+          <div class="tags">${(p.tags||[]).map(t=>{const c=tagColor(t);return `<span class="miniTag" style="background:${c}1f;color:${c}">#${esc(t)}</span>`;}).join('')}</div>
+        </div>
+        ${shareMode?'':`<button class="del" onclick="delPoint('${p.id}')">✕</button>`}</div>`).join('') || '<div style="color:var(--sub);font-size:12px;padding:4px 10px">暂无地点</div>'}
+    </div>`;
+  }).join('');
+}
+function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ================= 交互：添加地点 ================= */
+function toggleAddMode(){
+  addMode = !addMode;
+  document.getElementById('addTip').style.display = addMode?'block':'none';
+  document.getElementById('addPointBtn').textContent = addMode?'✕ 取消':'+地点';
+  document.getElementById('addPointBtn').classList.toggle('warn', addMode);
+}
+function openTripModal(){ if(shareMode) return; document.getElementById('tName').value=''; document.getElementById('tripMask').classList.add('show'); }
+function saveTrip(){
+  const name = document.getElementById('tName').value.trim();
+  if(!name) return toast('请输入旅程名称');
+  state.trips.push({ id:'t'+Date.now(), name, color:document.getElementById('tColor').value });
+  save(); closeMask('tripMask'); render(); toast('旅程已添加');
+}
+function openPointModal(pid, coord, presetName){
+  editingId = pid;
+  const sel = document.getElementById('pTrip');
+  sel.innerHTML = state.trips.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  const p = pid ? state.points.find(x=>x.id===pid) : null;
+  if(p){
+    document.getElementById('pointModalTitle').textContent='编辑地点';
+    document.getElementById('coordHint').textContent = `坐标 ${p.lng.toFixed(4)}, ${p.lat.toFixed(4)}（可手动修改）`;
+    document.getElementById('pName').value=p.name; sel.value=p.tripId;
+    document.getElementById('pDate').value=p.date||'';
+    document.getElementById('pTags').value=(p.tags||[]).join(',');
+    document.getElementById('pNote').value=p.note||'';
+    document.getElementById('pLng').value=p.lng;
+    document.getElementById('pLat').value=p.lat;
+    pendingCoord=[p.lng,p.lat];
+  } else {
+    document.getElementById('pointModalTitle').textContent='添加地点';
+    document.getElementById('coordHint').textContent = coord
+      ? `已选坐标 ${coord[0].toFixed(4)}, ${coord[1].toFixed(4)}（可手动修改）`
+      : '请手动填写经纬度，或返回搜索';
+    ['pTags','pNote'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('pName').value = presetName || '';
+    document.getElementById('pDate').value = new Date().toISOString().slice(0,10);
+    document.getElementById('pLng').value = coord ? coord[0] : '';
+    document.getElementById('pLat').value = coord ? coord[1] : '';
+    pendingCoord = coord;
+  }
+  const defs = (state.tagDefs||[]).map(t=>t.name).join(', ');
+  document.getElementById('tagSuggestions').textContent = defs ? '已有标签：' + defs : '';
+  document.getElementById('pointMask').classList.add('show');
+}
+function savePoint(){
+  const name = document.getElementById('pName').value.trim();
+  const lng = parseFloat(document.getElementById('pLng').value);
+  const lat = parseFloat(document.getElementById('pLat').value);
+  if(!name) return toast('请输入地点名称');
+  if(isNaN(lng) || isNaN(lat)) return toast('请填写有效的经纬度');
+  if(Math.abs(lng) > 180 || Math.abs(lat) > 90) return toast('经纬度数值超出范围');
+  const data = {
+    name, tripId:document.getElementById('pTrip').value,
+    date:document.getElementById('pDate').value,
+    tags:document.getElementById('pTags').value.split(/[,，]/).map(s=>s.trim()).filter(Boolean),
+    note:document.getElementById('pNote').value.trim(),
+    lng, lat
+  };
+  if(editingId){ Object.assign(state.points.find(x=>x.id===editingId), data); }
+  else { state.points.push({ id:'p'+Date.now(), ...data }); }
+  save(); closeMask('pointMask');
+  if(addMode) toggleAddMode();
+  render(); toast('已保存 ✓');
+}
+function delPoint(id){ if(shareMode) return; if(confirm('删除该地点？')){ state.points = state.points.filter(p=>p.id!==id); save(); render(); } }
+function delTrip(id){ if(shareMode) return; if(confirm('删除该旅程及其所有地点？')){ state.trips=state.trips.filter(t=>t.id!==id); state.points=state.points.filter(p=>p.tripId!==id); save(); render(); } }
+
+/* ================= CSV 导入 / 导出 ================= */
+const CSV_COLS = ['trip','name','lng','lat','tags','date','note'];
+function importCSV(input){
+  if(shareMode) return;
+  const f = input.files[0]; if(!f) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result.replace(/^\uFEFF/, '');
+    const lines = text.split(/\r?\n/).filter(l=>l.trim());
+    if(lines.length < 1) return toast('CSV 为空');
+    const header = lines[0].split(',').map(s=>s.trim().toLowerCase());
+    const idx = {}; CSV_COLS.forEach(c=>idx[c]=header.indexOf(c));
+    if(idx.trip<0 || idx.name<0 || idx.lng<0 || idx.lat<0){
+      document.getElementById('csvMask').classList.add('show'); return;
+    }
+    let n=0;
+    for(let i=1;i<lines.length;i++){
+      const c = lines[i].split(',').map(s=>s.trim());
+      const tripName = c[idx.trip], name = c[idx.name];
+      const lng = parseFloat(c[idx.lng]), lat = parseFloat(c[idx.lat]);
+      if(!tripName || !name || isNaN(lng) || isNaN(lat)) continue;
+      let trip = state.trips.find(t=>t.name===tripName);
+      if(!trip){ trip = { id:'t'+Date.now()+i, name:tripName, color:randColor() }; state.trips.push(trip); }
+      state.points.push({ id:'p'+Date.now()+i, tripId:trip.id, name, lng, lat,
+        tags: idx.tags>=0 ? c[idx.tags].split(';').map(s=>s.trim()).filter(Boolean) : [],
+        date: idx.date>=0 ? c[idx.date] : '', note: idx.note>=0 ? (c[idx.note]||'') : '' });
+      n++;
+    }
+    save(); render(); toast(`成功导入 ${n} 个地点`);
+    input.value='';
+  };
+  reader.readAsText(f, 'UTF-8');
+}
+function randColor(){ return ['#4a7dff','#ff6b6b','#2ec4b6','#f4a261','#9b5de5','#e63946','#43aa8b'][Math.floor(Math.random()*7)]; }
+function exportCSV(){
+  if(!state.points.length) return toast('暂无数据');
+  const rows = [CSV_COLS.join(',')];
+  state.points.forEach(p=>{
+    rows.push([tripName(p.tripId), p.name, p.lng, p.lat, (p.tags||[]).join(';'), p.date||'', (p.note||'').replace(/,/g,'，')].join(','));
+  });
+  const blob = new Blob(['\uFEFF'+rows.join('\n')], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download='旅行记录.csv'; a.click();
+}
+function tripName(id){ return (state.trips.find(t=>t.id===id)||{}).name || ''; }
+
+/* ================= 启动（含分享链接解析） ================= */
+(async function boot(){
+  applyTheme();
+  await loadDefaultKey();
+  if(location.hash.startsWith('#share=')){
+    try{
+      const data = await decodeShare(location.hash.slice(7));
+      if(data && data.trips && data.points && data.trips.length){
+        const tid = 'share_' + Date.now();
+        state = { trips: data.trips.map(t => ({...t, id: tid})), points: data.points.map(p => ({...p, tripId: tid})), tagDefs: data.tagDefs || [] };
+        shareMode = true;
+        document.getElementById('shareBanner').style.display = 'flex';
+        document.getElementById('mapSearchBtn').style.display = 'none';
+        ['btnTrip','btnPoint','btnTags','btnCsv','btnExport','btnKey','btnHideBar'].forEach(id => document.getElementById(id).style.display = 'none');
+      }
+    }catch(e){ toast('分享链接解析失败'); }
+  }
+  if(!shareMode) load();
+  renderPanel();
+  if(window.innerWidth < 768) document.getElementById('panel').classList.add('min');
+})();
+window.addEventListener('resize', ()=>{ if(chart) chart.resize(); });
+</script>
+</body>
+</html>
